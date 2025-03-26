@@ -16,6 +16,7 @@ from handlers import (
     CustomMessageHandler,
     ReloadHandler,
     GprlHandler,
+    ServerCheckHandler,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,9 @@ class WowBot:
                 self.file_service, self.wow_service, self.whitelist
             ),
             "!гпрл": GprlHandler(self.wow_service, self.whitelist),
+            "!проверка_сервера": ServerCheckHandler(
+                self.file_service, self.wow_service, self.whitelist
+            ),
         }
 
     def is_user_confirmed(self, user_id: int) -> bool:
