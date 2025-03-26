@@ -46,7 +46,7 @@ class WowBot:
                 self.file_service, self.wow_service, self.whitelist
             ),
             "!гпрл": GprlHandler(self.wow_service, self.whitelist),
-            "!проверка_сервера": ServerCheckHandler(
+            "!сервер": ServerCheckHandler(
                 self.file_service, self.wow_service, self.whitelist
             ),
         }
