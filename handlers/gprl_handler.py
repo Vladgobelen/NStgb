@@ -1,4 +1,4 @@
-from telegram import Update, ReplyKeyboardMarkup
+from telegram import Update
 from telegram.ext import CallbackContext
 import logging
 
@@ -12,33 +12,25 @@ class GprlHandler:
 
     async def handle(self, update: Update, context: CallbackContext):
         """Обработчик команды '!гпрл'"""
-        if update.effective_user.id not in self.whitelist:
-            await update.message.reply_text("❌ Требуется подтверждение через /confirm")
-            return
-
-        # Проверяем точное соответствие команде
-        if not update.message.text.lower() == "!гпрл":
-            return
-
         try:
-            await update.message.reply_text(
-                "⚡ Отправляю команду обновления ГП...",
-                reply_markup=ReplyKeyboardMarkup([["Назад"]], resize_keyboard=True),
-            )
+            # Проверка доступа
+            if update.effective_user.id not in self.whitelist:
+                await update.message.reply_text(
+                    "❌ Требуется подтверждение через /confirm"
+                )
+                return
+
+            # Проверяем точное соответствие команде (регистронезависимо)
+            if not update.message.text.strip().lower() == "!гпрл":
+                return
+
+            # Выполнение команды
+            await update.message.reply_text("⚡ Отправляю команду обновления GP...")
             if self.wow_service.execute_gp_command():
-                await update.message.reply_text(
-                    "✅ Команда выполнена в игре",
-                    reply_markup=ReplyKeyboardMarkup([["Назад"]], resize_keyboard=True),
-                )
+                await update.message.reply_text("✅ Команда выполнена в игре")
             else:
-                await update.message.reply_text(
-                    "⚠️ Не удалось выполнить команду",
-                    reply_markup=ReplyKeyboardMarkup([["Назад"]], resize_keyboard=True),
-                )
+                await update.message.reply_text("⚠️ Не удалось выполнить команду")
 
         except Exception as e:
-            logger.error(f"GPRL Error: {e}")
-            await update.message.reply_text(
-                "⚠️ Ошибка выполнения",
-                reply_markup=ReplyKeyboardMarkup([["Назад"]], resize_keyboard=True),
-            )
+            logger.error(f"GPRL Error: {e}", exc_info=True)
+            await update.message.reply_text("⚠️ Ошибка выполнения")

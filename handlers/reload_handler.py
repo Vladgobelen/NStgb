@@ -1,5 +1,5 @@
 from handlers.base import BaseHandler
-from telegram import Update, ReplyKeyboardMarkup
+from telegram import Update
 from telegram.ext import CallbackContext
 import logging
 
@@ -8,35 +8,33 @@ logger = logging.getLogger(__name__)
 
 class ReloadHandler(BaseHandler):
     async def handle(self, update: Update, context: CallbackContext):
-        """Обработчик команды '!релоэд' с поддержкой кнопок"""
+        """Обработчик команды '!релоэд'"""
         if not await self.check_access(update):
             return
 
-        # Проверяем, что это команда релоад (кнопка или текст)
-        text = update.message.text
-        if not (text.lower() == "!релоэд" or text == "🔄 Обновление информации"):
+        # Проверяем точное соответствие команде
+        if not update.message.text.strip().lower() == "!релоэд":
             return
 
         try:
             await update.message.reply_text(
-                "🔄 Пытаюсь обновить информацию...",
-                reply_markup=ReplyKeyboardMarkup([["Назад"]], resize_keyboard=True),
+                "🔄 Пытаюсь выполнить перезагрузку данных..."
             )
 
-            if self.wow_service.reload_addons():
+            # Выполняем команду через сервис
+            success = self.wow_service.reload_addons()
+
+            if success:
                 await update.message.reply_text(
-                    "✅ Информация успешно обновлена",
-                    reply_markup=ReplyKeyboardMarkup([["Назад"]], resize_keyboard=True),
+                    "✅ Перезагрузка данных успешно выполнена"
                 )
             else:
                 await update.message.reply_text(
-                    "⚠️ Не удалось обновить информацию",
-                    reply_markup=ReplyKeyboardMarkup([["Назад"]], resize_keyboard=True),
+                    "⚠️ Не удалось выполнить перезагрузку данных. Проверьте логи."
                 )
 
         except Exception as e:
-            logger.error(f"Error in ReloadHandler: {e}", exc_info=True)
+            logger.error(f"Ошибка в ReloadHandler: {e}", exc_info=True)
             await update.message.reply_text(
-                "⚠️ Ошибка при обновлении информации",
-                reply_markup=ReplyKeyboardMarkup([["Назад"]], resize_keyboard=True),
+                "⚠️ Критическая ошибка при выполнении перезагрузки"
             )
