@@ -145,7 +145,7 @@ class WowBot:
         text = message_text.lower()
 
         # Специальные случаи (не команды)
-        if text == "вождь, покажи сиськи":
+        if text == "Вождь, покажи сиськи":
             await update.message.reply_text("( . Y . )")
             return
 
