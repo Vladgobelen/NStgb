@@ -120,6 +120,19 @@ class WowBot:
                 text="⚠️ Произошла ошибка. Попробуйте позже.",
             )
 
+    async def _delete_warning_message(self, context: CallbackContext):
+        """Удаляет предупреждающее сообщение через 30 секунд"""
+        job = context.job
+        try:
+            await context.bot.delete_message(
+                chat_id=job.data["chat_id"], message_id=job.data["message_id"]
+            )
+            logger.info(
+                f"Удалили предупреждение для пользователя {job.data['user_id']}"
+            )
+        except Exception as e:
+            logger.error(f"Не удалось удалить предупреждение: {e}")
+
     async def handle_message(self, update: Update, context: CallbackContext):
         """Обработка входящих сообщений"""
         user = update.effective_user
@@ -136,16 +149,34 @@ class WowBot:
             except Exception as e:
                 logger.error(f"Ошибка удаления сообщения: {e}")
 
-            await context.bot.send_message(
+            # Отправляем сообщение с таймером удаления
+            warning_msg = await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"{user.first_name}, для доступа к боту выполните /confirm",
+                text=f"{user.first_name}, для доступа к чату выполните /confirm",
             )
+
+            # Пытаемся запланировать удаление
+            try:
+                context.job_queue.run_once(
+                    callback=self._delete_warning_message,
+                    when=30,
+                    data={
+                        "chat_id": chat_id,
+                        "message_id": warning_msg.message_id,
+                        "user_id": user.id,
+                    },
+                    name=f"delete_warning_{user.id}",
+                )
+            except AttributeError:
+                logger.warning(
+                    "JobQueue недоступен, сообщение не будет автоматически удалено"
+                )
             return
 
         text = message_text.lower()
 
         # Специальные случаи (не команды)
-        if text == "Вождь, покажи сиськи":
+        if text == "вождь, покажи сиськи":
             await update.message.reply_text("( . Y . )")
             return
 
