@@ -18,6 +18,7 @@ from handlers import (
     GprlHandler,
     ServerCheckHandler,
 )
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -121,17 +122,37 @@ class WowBot:
             )
 
     async def _delete_warning_message(self, context: CallbackContext):
-        """Удаляет предупреждающее сообщение через 30 секунд"""
+        """Удаляет предупреждающее сообщение с повторными попытками"""
         job = context.job
-        try:
-            await context.bot.delete_message(
-                chat_id=job.data["chat_id"], message_id=job.data["message_id"]
-            )
-            logger.info(
-                f"Удалили предупреждение для пользователя {job.data['user_id']}"
-            )
-        except Exception as e:
-            logger.error(f"Не удалось удалить предупреждение: {e}")
+        max_attempts = 5  # Максимальное количество попыток
+        initial_delay = 1  # Начальная задержка в секундах
+        attempt = 0
+
+        while attempt < max_attempts:
+            try:
+                await context.bot.delete_message(
+                    chat_id=job.data["chat_id"], message_id=job.data["message_id"]
+                )
+                logger.info(
+                    f"Успешно удалили предупреждение для пользователя {job.data['user_id']}"
+                )
+                return  # Успешно удалили, выходим из цикла
+            except Exception as e:
+                attempt += 1
+                if attempt == max_attempts:
+                    logger.error(
+                        f"Не удалось удалить предупреждение после {max_attempts} попыток: {e}"
+                    )
+                    break
+
+                # Вычисляем задержку с экспоненциальным откатом
+                delay = initial_delay * (2 ** (attempt - 1))
+                logger.warning(
+                    f"Попытка {attempt} не удалась, повтор через {delay} сек: {e}"
+                )
+
+                # Ждем перед следующей попыткой
+                await asyncio.sleep(delay)
 
     async def handle_message(self, update: Update, context: CallbackContext):
         """Обработка входящих сообщений"""
@@ -159,18 +180,16 @@ class WowBot:
             try:
                 context.job_queue.run_once(
                     callback=self._delete_warning_message,
-                    when=30,
+                    when=30,  # Первая попытка через 30 секунд
                     data={
                         "chat_id": chat_id,
                         "message_id": warning_msg.message_id,
                         "user_id": user.id,
                     },
-                    name=f"delete_warning_{user.id}",
+                    name=f"delete_warning_{user.id}_{warning_msg.message_id}",  # Уникальное имя с ID сообщения
                 )
-            except AttributeError:
-                logger.warning(
-                    "JobQueue недоступен, сообщение не будет автоматически удалено"
-                )
+            except Exception as e:
+                logger.error(f"Ошибка при планировании удаления: {e}")
             return
 
         text = message_text.lower()
