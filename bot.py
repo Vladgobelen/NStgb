@@ -60,17 +60,75 @@ class WowBot:
         """Инициализация после запуска"""
         application.bot_data["state"] = self
 
+    async def _delete_message_with_retry(
+        self, chat_id: int, message_id: int, context: CallbackContext = None
+    ):
+        """Удаление сообщения с повторными попытками"""
+        max_attempts = 5
+        initial_delay = 1
+        attempt = 0
+
+        while attempt < max_attempts:
+            try:
+                if context:
+                    await context.bot.delete_message(
+                        chat_id=chat_id, message_id=message_id
+                    )
+                else:
+                    # Если context не передан, создаем временный Application
+                    async with Application.builder().token(
+                        self.config.BOT_TOKEN
+                    ).build() as app:
+                        await app.bot.delete_message(
+                            chat_id=chat_id, message_id=message_id
+                        )
+
+                logger.info(f"Сообщение {message_id} успешно удалено")
+                return True
+            except Exception as e:
+                attempt += 1
+                if attempt == max_attempts:
+                    logger.error(
+                        f"Не удалось удалить сообщение после {max_attempts} попыток: {e}"
+                    )
+                    return False
+
+                delay = initial_delay * (2 ** (attempt - 1))
+                logger.warning(
+                    f"Попытка {attempt} не удалась, повтор через {delay} сек: {e}"
+                )
+                await asyncio.sleep(delay)
+
+    async def _schedule_message_deletion(
+        self, context: CallbackContext, chat_id: int, message_id: int, delay: int = 30
+    ):
+        """Планирует удаление сообщения через указанное время"""
+        try:
+            context.job_queue.run_once(
+                callback=lambda ctx: self._delete_message_with_retry(
+                    chat_id, message_id, ctx
+                ),
+                when=delay,
+                data={"chat_id": chat_id, "message_id": message_id},
+                name=f"delete_msg_{message_id}",
+            )
+        except Exception as e:
+            logger.error(f"Ошибка при планировании удаления сообщения: {e}")
+
     async def start(self, update: Update, context: CallbackContext):
         """Обработчик команды /start"""
         user = update.effective_user
         if self.is_user_confirmed(user.id):
-            await update.message.reply_text("✅ Вы уже подтверждены!")
+            msg = await update.message.reply_text("✅ Вы уже подтверждены!")
         else:
-            await update.message.reply_text(
+            msg = await update.message.reply_text(
                 "👋 Привет! Для доступа к функциям бота:\n"
                 "1. Присоединитесь к нашей группе\n"
                 "2. Отправьте команду /confirm"
             )
+        await self._schedule_message_deletion(
+            context, update.effective_chat.id, msg.message_id
+        )
 
     async def confirm(self, update: Update, context: CallbackContext):
         """Обработчик команды /confirm"""
@@ -83,9 +141,12 @@ class WowBot:
                 logger.error(f"Не удалось удалить сообщение: {e}")
 
             if self.is_user_confirmed(user.id):
-                await context.bot.send_message(
+                msg = await context.bot.send_message(
                     chat_id=update.effective_chat.id,
                     text="ℹ️ Вы уже подтверждены.",
+                )
+                await self._schedule_message_deletion(
+                    context, update.effective_chat.id, msg.message_id
                 )
                 return
 
@@ -101,58 +162,43 @@ class WowBot:
                     user.username or user.first_name,
                 ):
                     self.whitelist.add(user.id)
-                    await context.bot.send_message(
-                        chat_id=update.effective_chat.id,
-                        text="✅ Вы успешно подтверждены!"
+                    text = (
+                        "✅ Вы успешно подтверждены!"
                         if chat_member.status == "member"
-                        else "👑 Администратор подтвержден!",
+                        else "👑 Администратор подтвержден!"
+                    )
+                    msg = await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text=text,
+                    )
+                    await self._schedule_message_deletion(
+                        context, update.effective_chat.id, msg.message_id
                     )
                     return
 
-            await context.bot.send_message(
+            msg = await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text="❌ Вы должны быть участником группы!",
+            )
+            await self._schedule_message_deletion(
+                context, update.effective_chat.id, msg.message_id
             )
 
         except Exception as e:
             logger.error(f"Ошибка подтверждения: {e}", exc_info=True)
-            await context.bot.send_message(
+            msg = await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text="⚠️ Произошла ошибка. Попробуйте позже.",
             )
+            await self._schedule_message_deletion(
+                context, update.effective_chat.id, msg.message_id
+            )
 
     async def _delete_warning_message(self, context: CallbackContext):
-        """Удаляет предупреждающее сообщение с повторными попытками"""
-        job = context.job
-        max_attempts = 5  # Максимальное количество попыток
-        initial_delay = 1  # Начальная задержка в секундах
-        attempt = 0
-
-        while attempt < max_attempts:
-            try:
-                await context.bot.delete_message(
-                    chat_id=job.data["chat_id"], message_id=job.data["message_id"]
-                )
-                logger.info(
-                    f"Успешно удалили предупреждение для пользователя {job.data['user_id']}"
-                )
-                return  # Успешно удалили, выходим из цикла
-            except Exception as e:
-                attempt += 1
-                if attempt == max_attempts:
-                    logger.error(
-                        f"Не удалось удалить предупреждение после {max_attempts} попыток: {e}"
-                    )
-                    break
-
-                # Вычисляем задержку с экспоненциальным откатом
-                delay = initial_delay * (2 ** (attempt - 1))
-                logger.warning(
-                    f"Попытка {attempt} не удалась, повтор через {delay} сек: {e}"
-                )
-
-                # Ждем перед следующей попыткой
-                await asyncio.sleep(delay)
+        """Удаляет предупреждающее сообщение"""
+        await self._delete_message_with_retry(
+            context.job.data["chat_id"], context.job.data["message_id"], context
+        )
 
     async def handle_message(self, update: Update, context: CallbackContext):
         """Обработка входящих сообщений"""
@@ -180,13 +226,13 @@ class WowBot:
             try:
                 context.job_queue.run_once(
                     callback=self._delete_warning_message,
-                    when=30,  # Первая попытка через 30 секунд
+                    when=30,
                     data={
                         "chat_id": chat_id,
                         "message_id": warning_msg.message_id,
                         "user_id": user.id,
                     },
-                    name=f"delete_warning_{user.id}_{warning_msg.message_id}",  # Уникальное имя с ID сообщения
+                    name=f"delete_warning_{user.id}_{warning_msg.message_id}",
                 )
             except Exception as e:
                 logger.error(f"Ошибка при планировании удаления: {e}")
@@ -196,7 +242,8 @@ class WowBot:
 
         # Специальные случаи (не команды)
         if text == "вождь, покажи сиськи":
-            await update.message.reply_text("( . Y . )")
+            msg = await update.message.reply_text("( . Y . )")
+            await self._schedule_message_deletion(context, chat_id, msg.message_id)
             return
 
         # Разделяем сообщение на слова
