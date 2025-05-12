@@ -6,31 +6,22 @@ logger = logging.getLogger(__name__)
 
 
 class GprlHandler:
-    def __init__(self, wow_service, whitelist: set):
+    def __init__(self, wow_service):
         self.wow_service = wow_service
-        self.whitelist = whitelist
 
     async def handle(self, update: Update, context: CallbackContext):
-        """Обработчик команды '!гпрл'"""
+        """Обработчик ТОЛЬКО команды '!гпрл'"""
         try:
-            # Проверка доступа
-            if update.effective_user.id not in self.whitelist:
-                await update.message.reply_text(
-                    "❌ Требуется подтверждение через /confirm"
-                )
+            # Точное сравнение команды (регистронезависимо)
+            if update.message.text.strip().lower() != "!гпрл":
                 return
 
-            # Проверяем точное соответствие команде (регистронезависимо)
-            if not update.message.text.strip().lower() == "!гпрл":
-                return
-
-            # Выполнение команды
-            await update.message.reply_text("⚡ Отправляю команду обновления GP...")
+            await update.message.reply_text("⚡ Выполняю gpEnTg() в игре...")
             if self.wow_service.execute_gp_command():
-                await update.message.reply_text("✅ Команда выполнена в игре")
+                await update.message.reply_text("✅ Команда выполнена")
             else:
-                await update.message.reply_text("⚠️ Не удалось выполнить команду")
+                await update.message.reply_text("⚠️ Ошибка выполнения")
 
         except Exception as e:
-            logger.error(f"GPRL Error: {e}", exc_info=True)
-            await update.message.reply_text("⚠️ Ошибка выполнения")
+            logger.error(f"GPRL Error: {e}")
+            await update.message.reply_text("⚠️ Ошибка выполнения команды")

@@ -1,2 +1,4 @@
 /python/bin/python NStgb.py
 /python/bin/python main.py
+sh updateConfigs.sh
+/python/bin/python main.py

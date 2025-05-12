@@ -9,12 +9,9 @@ logger = logging.getLogger(__name__)
 
 class ServerCheckHandler(BaseHandler):
     async def handle(self, update: Update, context: CallbackContext):
-        """Обработчик команды '!проверка_сервера'"""
-        if not await self.check_access(update):
-            return
-
+        """Обработчик команды '!сервер'"""
         try:
-            await update.message.reply_text("🔄 Проверяю состояние сервера...")
+            msg = await update.message.reply_text("🔄 Проверяю состояние сервера...")
 
             # Проверка наличия соединений
             result_count = subprocess.run(
@@ -26,7 +23,7 @@ class ServerCheckHandler(BaseHandler):
             connection_count = int(result_count.stdout.strip() or 0)
 
             if connection_count < 1:
-                await update.message.reply_text("🔴 Сервер ОФФЛАЙН")
+                await msg.edit_text("🔴 Сервер ОФФЛАЙН")
                 return
 
             # Проверка проблем при наличии соединений
@@ -53,11 +50,9 @@ class ServerCheckHandler(BaseHandler):
                 problems.append("пакеты")
 
             if problems:
-                await update.message.reply_text(
-                    f"🟡 Сервер БОЛЕЕТ ({', '.join(problems)})"
-                )
+                await msg.edit_text(f"🟡 Сервер БОЛЕЕТ ({', '.join(problems)})")
             else:
-                await update.message.reply_text("🟢 Сервер ОНЛАЙН")
+                await msg.edit_text("🟢 Сервер ОНЛАЙН")
 
         except Exception as e:
             logger.error(f"Ошибка проверки сервера: {e}", exc_info=True)

@@ -8,10 +8,6 @@ logger = logging.getLogger(__name__)
 
 class IlvlHandler(BaseHandler):
     async def handle(self, update: Update, context: CallbackContext):
-        """Обработчик команды 'илвл'"""
-        if not await self.check_access(update):
-            return
-
         try:
             data = self.file_service.load_lua_file("ilvl")
             if not data or "Шеф" not in data or "илвл" not in data["Шеф"]:

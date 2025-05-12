@@ -8,6 +8,9 @@ load_dotenv()
 class Config:
     def __init__(self):
         self.BOT_TOKEN = os.getenv("MAIN_BOT_TOKEN")
+        self.WHITELIST_FILE = Path(
+            "whitelist_sync.txt"
+        )  # Локальная копия белого списка
 
         self.WOW_FILES = {
             "ilvl": Path(
@@ -29,4 +32,12 @@ class Config:
             ],
             "paste_command": "xte 'keydown Control_L' 'key v' 'keyup Control_L'",
             "press_enter": "xte 'key Return'",
+        }
+
+        self.COMMAND_PREFIXES = {
+            "илвл": "ilvl",
+            "!гп": "gp",
+            "!сообщение:": "message",
+            "!релоэд": "reload",
+            "!гпрл": "gprl",
         }

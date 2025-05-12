@@ -11,7 +11,6 @@ class WowService:
         self.commands = wow_commands
 
     def _run_cmd(self, command: str) -> bool:
-        """Выполнение одной команды"""
         try:
             subprocess.run(shlex.split(command), check=True, timeout=3)
             return True
@@ -20,25 +19,23 @@ class WowService:
             return False
 
     def execute_gp_command(self) -> bool:
-        """ТОЛЬКО выполняет команду в игре, без доступа к файлам"""
+        """ТОЛЬКО выполняет gpEnTg() в игре"""
         try:
-            # 1. Активация окна
+            # 1. Активация окна WoW
             for cmd in self.commands["focus_window"]:
                 if not self._run_cmd(cmd):
                     return False
 
-            # 2. Отправка команды
+            # 2. Отправка конкретной команды
             pyperclip.copy("/run gpEnTg()")
             return self._run_cmd(self.commands["paste_command"]) and self._run_cmd(
                 self.commands["press_enter"]
             )
-
         except Exception as e:
             logger.error(f"GP command error: {e}")
             return False
 
     def send_to_wow(self, message: str) -> bool:
-        """Отправка сообщения в игру (аналог handle_custom_message из старого бота)"""
         try:
             pyperclip.copy(message)
             for cmd in self.commands["focus_window"]:
@@ -52,12 +49,14 @@ class WowService:
             return False
 
     def reload_addons(self) -> bool:
-        """Релоад аддонов (аналог handle_reload из старого бота)"""
+        """Выполняет команду /reload в игре"""
         try:
+            # 1. Активация окна WoW
             for cmd in self.commands["focus_window"]:
                 if not self._run_cmd(cmd):
                     return False
 
+            # 2. Отправка команды /reload
             pyperclip.copy("/reload")
             return self._run_cmd(self.commands["paste_command"]) and self._run_cmd(
                 self.commands["press_enter"]
