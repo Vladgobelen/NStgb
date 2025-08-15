@@ -8,7 +8,8 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-MAX_LINES = 10  # Максимум строк за раз, чтобы не засорять чат
+MAX_LINES = 10  # Максимум строк за раз
+TOTAL_BASE = 10000  # База для расчёта процента
 
 
 class HistoryHandler(BaseHandler):
@@ -65,6 +66,25 @@ class HistoryHandler(BaseHandler):
                     "timestamp": timestamp,
                     "time_str": time_str
                 })
+
+            # === НОВАЯ КОМАНДА: [Ник] всего ===
+            if len(args) >= 2 and args[1].lower() == "всего":
+                target_nick = args[0]
+                count = sum(1 for p in parsed if p["nick"] == target_nick)
+
+                if count == 0:
+                    await update.message.reply_text(f"🔸 Ник \"{target_nick}\" не найден в истории")
+                    return
+
+                # Процент от 10 000
+                percent = (count / TOTAL_BASE) * 100
+                await update.message.reply_text(
+                    f"📊 Ник \"{target_nick}\" написал {count} сообщений "
+                    f"({percent:.2f}% от {TOTAL_BASE})"
+                )
+                return
+
+            # === ОСНОВНАЯ ЛОГИКА: диапазон, фильтр по нику и т.д. ===
 
             # Определяем: ник, диапазон
             target_nick = None
