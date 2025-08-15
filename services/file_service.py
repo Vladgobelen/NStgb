@@ -1,3 +1,4 @@
+# services/file_service.py
 import re
 import logging
 from pathlib import Path
@@ -69,3 +70,67 @@ class FileService:
         except Exception as e:
             logger.error(f"Ошибка загрузки whitelist: {e}", exc_info=True)
         return whitelist
+
+    def load_chat_history(self) -> Optional[list]:
+        """
+        Загружает список сообщений из ns_chat_log['лог_чат']
+        Точечно извлекает массив строк, игнорируя остальной код.
+        Использует ручной парсинг с балансировкой фигурных скобок.
+        """
+        file_path = self.file_paths.get("history")
+        if not file_path or not file_path.exists():
+            logger.error(f"❌ Файл истории не найден: {file_path}")
+            return None
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = f.read()
+
+            logger.info(f"🔍 Начинаем парсинг истории чата из {file_path}")
+
+            start_marker = '["лог_чат"] = {'
+            start = data.find(start_marker)
+            if start == -1:
+                logger.error('❌ Не найден маркер ["лог_чат"] = {')
+                return None
+
+            # Начинаем после {
+            start += len(start_marker)
+            brace_count = 1
+            i = start
+            content_lines = []
+
+            # Балансировка скобок
+            while i < len(data) and brace_count > 0:
+                if data[i] == '{':
+                    brace_count += 1
+                elif data[i] == '}':
+                    brace_count -= 1
+                i += 1
+
+            # Вырезаем содержимое между { и последней }
+            content = data[start:i-1]
+
+            # Удаляем комментарии -- [число]
+            content = re.sub(r'--\s*\[\d+\]', '', content)
+
+            # Разбиваем на строки
+            for line in content.splitlines():
+                line = line.strip()
+                if not line or line.startswith('--'):
+                    continue
+                # Убираем кавычки и запятую
+                line = line.strip().strip(',').strip('"')
+                if line:
+                    content_lines.append(line)
+
+            if not content_lines:
+                logger.warning("⚠️ Найдена таблица, но строк не извлечено")
+                return None
+
+            logger.info(f"✅ Успешно загружено {len(content_lines)} строк из истории чата")
+            return content_lines
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка при загрузке истории чата: {e}", exc_info=True)
+            return None

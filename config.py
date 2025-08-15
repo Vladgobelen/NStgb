@@ -1,3 +1,4 @@
+# config.py
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -17,7 +18,7 @@ class Config:
                 "/home/diver/Games/wc/CircleL/WTF/Account/VLADGOBELEN/SavedVariables/NSQC.lua"
             ),
             "history": Path(
-                "/home/diver/Games/wc/CircleL/WTF/Account/VLADGOBELEN/SavedVariables/GuildChat.lua"
+                "/home/diver/Games/wc/CircleL/WTF/Account/VLADGOBELEN/SavedVariables/NSQS_chat_log.lua"
             ),
         }
 

@@ -1,3 +1,4 @@
+# bot.py
 import logging
 from telegram import Update
 from telegram.ext import (
@@ -16,6 +17,7 @@ from handlers import (
     ReloadHandler,
     GprlHandler,
     ServerCheckHandler,
+    HistoryHandler,  # <-- добавлен импорт
 )
 
 logger = logging.getLogger(__name__)
@@ -34,6 +36,7 @@ class WowBot:
             "!релоэд": ReloadHandler(self.file_service, self.wow_service),
             "!гпрл": GprlHandler(self.wow_service),
             "!сервер": ServerCheckHandler(self.file_service, self.wow_service),
+            "-история": HistoryHandler(self.file_service, self.wow_service),  # <-- новая команда
         }
 
     async def handle_message(self, update: Update, context: CallbackContext):

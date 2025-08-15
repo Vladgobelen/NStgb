@@ -2,3 +2,9 @@
 /python/bin/python main.py
 sh updateConfigs.sh
 /python/bin/python main.py
+ls -la
+xdotool search --name "Ѓ�азвание окна игру�" windowactivate
+xdotool search --name "Silent" windowactivate
+xdotool search --name "Silent*" windowactivate
+xdotool search --name "Silent storm" windowactivate
+xdotool search --name "wine" windowactivate
