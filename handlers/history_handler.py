@@ -8,8 +8,9 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-MAX_LINES = 10  # Максимум строк за раз
+MAX_LINES = 10  # Максимум строк при выводе сообщений
 TOTAL_BASE = 10000  # База для расчёта процента
+TOP_COUNT = 10  # Сколько игроков в топе
 
 
 class HistoryHandler(BaseHandler):
@@ -67,7 +68,30 @@ class HistoryHandler(BaseHandler):
                     "time_str": time_str
                 })
 
-            # === НОВАЯ КОМАНДА: [Ник] всего ===
+            # === КОМАНДА: топ ===
+            if len(args) == 1 and args[0].lower() == "топ":
+                # Считаем количество сообщений по никам
+                stats = {}
+                for p in parsed:
+                    nick = p["nick"]
+                    stats[nick] = stats.get(nick, 0) + 1
+
+                # Сортируем по убыванию
+                sorted_stats = sorted(stats.items(), key=lambda x: x[1], reverse=True)
+
+                # Формируем топ-10
+                lines = ["🏆 ТОП-10 по активности в чате:"]
+                for i, (nick, count) in enumerate(sorted_stats[:TOP_COUNT], 1):
+                    percent = (count / TOTAL_BASE) * 100
+                    lines.append(f"{i}. {nick} — {count} сообщений ({percent:.2f}%)")
+
+                if len(sorted_stats) == 0:
+                    lines.append("Пока нет данных")
+
+                await update.message.reply_text("\n".join(lines))
+                return
+
+            # === КОМАНДА: [Ник] всего ===
             if len(args) >= 2 and args[1].lower() == "всего":
                 target_nick = args[0]
                 count = sum(1 for p in parsed if p["nick"] == target_nick)
@@ -76,7 +100,6 @@ class HistoryHandler(BaseHandler):
                     await update.message.reply_text(f"🔸 Ник \"{target_nick}\" не найден в истории")
                     return
 
-                # Процент от 10 000
                 percent = (count / TOTAL_BASE) * 100
                 await update.message.reply_text(
                     f"📊 Ник \"{target_nick}\" написал {count} сообщений "
