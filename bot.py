@@ -18,6 +18,8 @@ from handlers import (
     GprlHandler,
     ServerCheckHandler,
     HistoryHandler,  # <-- добавлен импорт
+    AddonHandler,
+    CalendarHandler,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,10 +35,12 @@ class WowBot:
             "илвл": IlvlHandler(self.file_service, self.wow_service),
             "!гп": GpHandler(self.file_service, self.wow_service),
             "!сообщение:": CustomMessageHandler(self.file_service, self.wow_service),
-            "!релоэд": ReloadHandler(self.file_service, self.wow_service),
+            "-релоэд": ReloadHandler(self.file_service, self.wow_service),
             "!гпрл": GprlHandler(self.wow_service),
             "!сервер": ServerCheckHandler(self.file_service, self.wow_service),
-            "-история": HistoryHandler(self.file_service, self.wow_service),  # <-- новая команда
+            "-история": HistoryHandler(self.file_service, self.wow_service),
+            "-аддон": AddonHandler(),  # <-- новая команда
+            "-рт": CalendarHandler(self.file_service, self.wow_service),
         }
 
     async def handle_message(self, update: Update, context: CallbackContext):

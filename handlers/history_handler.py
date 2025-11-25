@@ -33,33 +33,37 @@ class HistoryHandler(BaseHandler):
                 await update.message.reply_text("История чата пуста или не загружена")
                 return
 
-            # Парсим каждую строку: "Ник Сообщение timestamp"
+            # Парсим каждую строку: ищем timestamp в конце
             parsed = []
             for line in raw_lines:
                 line = line.strip()
                 if not line:
                     continue
 
-                # Ищем последнее число (timestamp)
-                match = re.match(r'^(.+?)\s+(\d{10,})$', line)
-                if match:
-                    text_part = match.group(1).strip()
-                    timestamp = int(match.group(2))
+                # Ищем timestamp из 10+ цифр в конце строки
+                timestamp_match = re.search(r'(\d{10,})$', line)
+                if timestamp_match:
+                    timestamp = int(timestamp_match.group(1))
+                    text_part = line[:timestamp_match.start()].strip()
+                    time_str = datetime.fromtimestamp(timestamp).strftime("%H:%M:%S")
+                else:
+                    # Нет timestamp — пропускаем или помечаем как неизвестное
+                    timestamp = 0
+                    text_part = line
+                    time_str = "??:??:??"
 
-                    # Первое слово — ник
+                # Извлекаем ник: первое слово до пробела
+                if text_part:
                     first_space = text_part.find(' ')
                     if first_space > 0:
                         nick = text_part[:first_space]
                         message = text_part[first_space + 1:].strip()
                     else:
-                        nick = "Unknown"
-                        message = text_part
+                        nick = text_part  # только ник, без сообщения
+                        message = ""
                 else:
                     nick = "Unknown"
-                    message = line
-                    timestamp = 0
-
-                time_str = datetime.fromtimestamp(timestamp).strftime("%H:%M:%S") if timestamp >= 1000000000 else "??:??:??"
+                    message = ""
 
                 parsed.append({
                     "nick": nick,
@@ -68,13 +72,16 @@ class HistoryHandler(BaseHandler):
                     "time_str": time_str
                 })
 
+            total_messages = len(parsed)
+
             # === КОМАНДА: топ ===
             if len(args) == 1 and args[0].lower() == "топ":
                 # Считаем количество сообщений по никам
                 stats = {}
                 for p in parsed:
                     nick = p["nick"]
-                    stats[nick] = stats.get(nick, 0) + 1
+                    if nick != "Unknown":
+                        stats[nick] = stats.get(nick, 0) + 1
 
                 # Сортируем по убыванию
                 sorted_stats = sorted(stats.items(), key=lambda x: x[1], reverse=True)
@@ -82,10 +89,10 @@ class HistoryHandler(BaseHandler):
                 # Формируем топ-10
                 lines = ["🏆 ТОП-10 по активности в чате:"]
                 for i, (nick, count) in enumerate(sorted_stats[:TOP_COUNT], 1):
-                    percent = (count / TOTAL_BASE) * 100
+                    percent = (count / total_messages) * 100 if total_messages > 0 else 0
                     lines.append(f"{i}. {nick} — {count} сообщений ({percent:.2f}%)")
 
-                if len(sorted_stats) == 0:
+                if not sorted_stats:
                     lines.append("Пока нет данных")
 
                 await update.message.reply_text("\n".join(lines))
@@ -100,10 +107,10 @@ class HistoryHandler(BaseHandler):
                     await update.message.reply_text(f"🔸 Ник \"{target_nick}\" не найден в истории")
                     return
 
-                percent = (count / TOTAL_BASE) * 100
+                percent = (count / total_messages) * 100 if total_messages > 0 else 0
                 await update.message.reply_text(
                     f"📊 Ник \"{target_nick}\" написал {count} сообщений "
-                    f"({percent:.2f}% от {TOTAL_BASE})"
+                    f"({percent:.2f}% от {total_messages})"
                 )
                 return
 

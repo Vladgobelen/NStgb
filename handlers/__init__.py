@@ -6,7 +6,9 @@ from .custom_message_handler import CustomMessageHandler
 from .reload_handler import ReloadHandler
 from .gprl_handler import GprlHandler
 from .server_check_handler import ServerCheckHandler
-from .history_handler import HistoryHandler  # <-- добавлено
+from .history_handler import HistoryHandler
+from .addon_handler import AddonHandler
+from .calendar_handler import CalendarHandler
 
 __all__ = [
     "BaseHandler",
@@ -16,5 +18,7 @@ __all__ = [
     "ReloadHandler",
     "GprlHandler",
     "ServerCheckHandler",
-    "HistoryHandler",  # <-- добавлено
+    "HistoryHandler",
+    "AddonHandler",
+    "CalendarHandler",
 ]

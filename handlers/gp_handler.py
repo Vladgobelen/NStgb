@@ -19,7 +19,7 @@ class GpHandler(BaseHandler):
             last_newline = chunk.rfind("\n")
             if last_newline != -1 and len(text) > 0:
                 chunk = chunk[:last_newline]
-                text = chunk[last_newline + 1 :] + text
+                text = chunk[last_newline + 1:] + text
 
             await update.message.reply_text(prefix + chunk)
             prefix = ""  # Префикс только для первого сообщения
@@ -50,10 +50,17 @@ class GpHandler(BaseHandler):
                 for name, value in gp_data.items():
                     result.append(f"{name}: {int(value)}")
 
-            elif len(args) == 1:  # Поиск по имени игрока
-                name = args[0]
-                if name in gp_data:
-                    result.append(f"{name}: {int(gp_data[name])}")
+            elif len(args) == 1:
+                name_query = args[0]
+                # Ищем совпадение без учёта регистра
+                found = None
+                for name, value in gp_data.items():
+                    if name.lower() == name_query:
+                        found = (name, value)
+                        break
+
+                if found:
+                    result.append(f"{found[0]}: {int(found[1])}")
                 else:
                     await update.message.reply_text("Игрок не найден")
                     return

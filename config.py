@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-
 class Config:
     def __init__(self):
         self.BOT_TOKEN = os.getenv("MAIN_BOT_TOKEN")
@@ -19,6 +18,9 @@ class Config:
             ),
             "history": Path(
                 "/home/diver/Games/wc/CircleL/WTF/Account/VLADGOBELEN/SavedVariables/NSQS_chat_log.lua"
+            ),
+            "calendar": Path(
+                "/home/diver/Games/wc/CircleL/WTF/Account/VLADGOBELEN/SavedVariables/NSQS.lua"
             ),
         }
 
