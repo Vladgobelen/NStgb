@@ -1,40 +1,54 @@
-# Python
+# === Python ===
 __pycache__/
 *.py[cod]
 *.so
 *.egg-info/
+.eggs/
+build/
+dist/
 
-# Virtual env
+# === Virtual env ===
 venv/
 ENV/
 .venv/
 
-# IDE/OS
+# === IDE/OS ===
 .idea/
 .vscode/
 *.swp
+*.swo
 .DS_Store
+Thumbs.db
 
-# Logs & temp
+# === Logs & temp ===
 *.log
 logging/
 *.tmp
 *.bak
 
-# Secrets
+# === Secrets & history (SECURITY) ===
 .env
 *.local.py
 .zshistory
 .bash_history
+.history
+*.zsh-*
 
-# Test files
+# === Test files ===
 1.py
 1.sh
-111/
 test_*.py
+*_test.py
+111/
+backup/
+tmp/
 
-# Accidental imports
+# === Accidental imports ===
 pyperclip
 time
 subprocess
 shlex
+
+# === WoW local paths ===
+/WTF/
+/Interface/AddOns/*/SavedVariables/*.lua
