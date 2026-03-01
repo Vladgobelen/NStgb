@@ -1,8 +1,68 @@
-.env
-*.log
+# Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
 .DS_Store
-whitelist.txt
+Thumbs.db
+
+# Logs
+*.log
+logging
+
+# Local config
+.env
+*.local.py
+
+# Test files
+1.py
+1.sh
+test_*.py
+*_test.py
+*.tmp
+
+# Accidental imports (как time, pyperclip и т.д.)
+time
+pyperclip
+subprocess
+shlex
+
+# Backup dirs
+111/
+backup/
+*.bak
+
+# Wow-specific (не коммитим локальные пути)
+WTF/
+Interface/AddOns/*/SavedVariables/*.lua
