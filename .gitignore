@@ -1,68 +1,43 @@
-# Python
+# === Python ===
 __pycache__/
 *.py[cod]
-*$py.class
 *.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
-*.egg
+.eggs/
+build/
+dist/
 
-# Virtual environments
+# === Virtual env ===
 venv/
 ENV/
-env/
 .venv/
 
-# IDE
+# === IDE/OS ===
 .idea/
 .vscode/
 *.swp
-*.swo
-*~
-
-# OS
 .DS_Store
 Thumbs.db
 
-# Logs
+# === Logs & temp ===
 *.log
-logging
-
-# Local config
-.env
-*.local.py
-
-# Test files
-1.py
-1.sh
-test_*.py
-*_test.py
+logging/
 *.tmp
-
-# Accidental imports (как time, pyperclip и т.д.)
-time
-pyperclip
-subprocess
-shlex
-
-# Backup dirs
-111/
-backup/
 *.bak
 
-# Wow-specific (не коммитим локальные пути)
-WTF/
-Interface/AddOns/*/SavedVariables/*.lua
+# === Secrets & history (SECURITY) ===
+.env
+*.local.py
+.zshistory
+.bash_history
+.history
+
+# === Test files (не коммитим) ===
+1.py
+1.sh
+111/
+test_*.py
+
+# === WoW local paths (никогда не коммитить) ===
+/WTF/
+/Interface/AddOns/*/SavedVariables/*.lua
