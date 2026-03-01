@@ -1,4 +1,3 @@
-# handlers/custom_message_handler.py
 from handlers.base import BaseHandler
 from telegram import Update
 from telegram.ext import CallbackContext
@@ -6,26 +5,20 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class CustomMessageHandler(BaseHandler):
     async def handle(self, update: Update, context: CallbackContext):
         try:
-            message_text = update.message.text.strip()
-            
-            if not message_text.lower().startswith("-сообщение"):
-                return
-            
-            parts = message_text.split(maxsplit=1)
+            parts = update.message.text.split(maxsplit=1)
             if len(parts) < 2:
-                await update.message.reply_text("Использование: -сообщение ваш текст")
+                await update.message.reply_text("Использование: !сообщение: ваш текст")
                 return
-            
+
             message = parts[1]
-            logger.info(f"Отправка сообщения в WoW: {message}")
-            
             if self.wow_service.send_to_wow(f"/g ТГ: {message}"):
                 await update.message.reply_text("✉️ Сообщение отправлено")
             else:
                 await update.message.reply_text("⚠️ Ошибка отправки")
         except Exception as e:
-            logger.error(f"Ошибка: {e}", exc_info=True)
+            logger.error(f"Ошибка: {e}")
             await update.message.reply_text("⚠️ Ошибка выполнения")

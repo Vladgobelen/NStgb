@@ -1,4 +1,3 @@
-# handlers/ilvl_handler.py
 from handlers.base import BaseHandler
 from telegram import Update
 from telegram.ext import CallbackContext
@@ -6,19 +5,15 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class IlvlHandler(BaseHandler):
     async def handle(self, update: Update, context: CallbackContext):
         try:
-            message_text = update.message.text.strip().lower()
-            
-            if not message_text.startswith("-илвл"):
-                return
-            
             data = self.file_service.load_lua_file("ilvl")
             if not data or "Шеф" not in data or "илвл" not in data["Шеф"]:
                 await update.message.reply_text("Данные не найдены")
                 return
-            
+
             await update.message.reply_text(
                 f"🔹 Уровень предметов: {data['Шеф']['илвл']}"
             )

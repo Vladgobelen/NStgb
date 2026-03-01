@@ -10,12 +10,14 @@ logger = logging.getLogger(__name__)
 
 class CalendarHandler(BaseHandler):
     def _find_last_available_date(self, calendar: dict) -> str:
+        """Находит самую свежую дату в календаре"""
         dates = list(calendar.keys())
         if not dates:
             return None
         return max(dates)
 
     def _format_events(self, day_dict, target_nick: str = None) -> list:
+        """Форматирует события в читаемый список"""
         events = []
         for sender, sender_events in day_dict.items():
             if target_nick and sender != target_nick:
@@ -24,8 +26,17 @@ class CalendarHandler(BaseHandler):
                 time_str = event.get("date", "0000")
                 formatted_time = f"{time_str[:2]}:{time_str[2:]}" if len(time_str) == 4 else time_str
                 desc_raw = event.get("text", "")
+                logger.debug(f"[DEBUG CALENDAR] desc_raw = {repr(desc_raw)}")
+                print(f"[PRINT DEBUG] RAW DESCRIPTION: {repr(desc_raw)}")
+
+                # Заменяем литеральные управляющие последовательности на реальные символы
                 desc = desc_raw.replace('\\n', '\n').replace('\\r', '\r')
+                # Убираем пробельные символы и остаточные обратные слеши в конце
                 desc = desc.rstrip(' \t\r\n\\')
+
+                logger.debug(f"[DEBUG CALENDAR] desc after cleanup = {repr(desc)}")
+                print(f"[PRINT DEBUG] CLEANED DESCRIPTION: {repr(desc)}")
+
                 event_line = f"📌 {title} ({formatted_time})\n👤 {sender}"
                 if desc:
                     event_line += f"\n📝 {desc}"
@@ -35,14 +46,12 @@ class CalendarHandler(BaseHandler):
     async def handle(self, update: Update, context: CallbackContext):
         try:
             message_text = update.message.text.strip()
-
-            # Проверка префикса
             if not message_text.lower().startswith("-рт"):
                 return
 
-            args = message_text[3:].strip().split()
-            full_data = self.file_service.load_lua_file("calendar")
+            args = message_text[4:].strip().split()  # убираем "-рт"
 
+            full_data = self.file_service.load_lua_file("calendar")
             if not full_data or "calendar" not in full_data:
                 await update.message.reply_text("📅 Календарь пуст или не загружен")
                 return
@@ -75,13 +84,10 @@ class CalendarHandler(BaseHandler):
                         except ValueError:
                             await update.message.reply_text("❌ Некорректная дата (DD.MM)")
                             return
-                        else:
-                            await update.message.reply_text("❌ Формат даты: DD или DD.MM")
-                            return
-                        mode = "date"
                     else:
                         await update.message.reply_text("❌ Формат даты: DD или DD.MM")
                         return
+                    mode = "date"
                 else:
                     target_nick = arg
                     target_date = now.strftime("%Y-%m-%d")
@@ -118,10 +124,13 @@ class CalendarHandler(BaseHandler):
                     header = f"📅 Сегодня нет событий от **{target_nick}**. Последние на {date_display}:"
                 else:
                     header = f"📅 События на {date_display}"
-                if target_nick:
-                    header += f" (от {target_nick})"
-                full_output = header + "\n" + "\n".join(events)
+                    if target_nick:
+                        header += f" (от {target_nick})"
+
+                full_output = header + "\n\n" + "\n\n".join(events)
+                logger.debug(f"[DEBUG CALENDAR] Final output:\n{repr(full_output)}")
                 await update.message.reply_text(full_output)
+
         except Exception as e:
             logger.error(f"Ошибка в CalendarHandler: {e}", exc_info=True)
             await update.message.reply_text("⚠️ Ошибка при обработке календаря")

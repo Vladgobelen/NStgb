@@ -1,0 +1,1141 @@
+bot.py:
+# bot.py
+import logging
+from telegram import Update
+from telegram.ext import (
+    Application,
+    MessageHandler as ExtMessageHandler,
+    filters,
+    CallbackContext,
+)
+from config import Config
+from services.file_service import FileService
+from services.wow_service import WowService
+from handlers import (
+    IlvlHandler,
+    GpHandler,
+    CustomMessageHandler,
+    ReloadHandler,
+    GprlHandler,
+    ServerCheckHandler,
+    HistoryHandler,
+    AddonHandler,
+    CalendarHandler,
+    OnlineHandler,  # <-- добавлен импорт
+)
+
+logger = logging.getLogger(__name__)
+
+
+class WowBot:
+    def __init__(self):
+        self.config = Config()
+        self.file_service = FileService(self.config.WOW_FILES)
+        self.wow_service = WowService(self.config.WOW_COMMANDS)
+
+        self.handlers = {
+            "илвл": IlvlHandler(self.file_service, self.wow_service),
+            "!гп": GpHandler(self.file_service, self.wow_service),
+            "!сообщение:": CustomMessageHandler(self.file_service, self.wow_service),
+            "-релоэд": ReloadHandler(self.file_service, self.wow_service),
+            "!гпрл": GprlHandler(self.wow_service),
+            "!сервер": ServerCheckHandler(self.file_service, self.wow_service),
+            "-история": HistoryHandler(self.file_service, self.wow_service),
+            "-аддон": AddonHandler(),
+            "-рт": CalendarHandler(self.file_service, self.wow_service),
+            "-онлайн": OnlineHandler(),  # <-- добавлена команда
+        }
+
+    async def handle_message(self, update: Update, context: CallbackContext):
+        if not update.message or not update.message.text:
+            return
+
+        message_text = update.message.text.strip()
+        lower_text = message_text.lower()
+
+        # Специальная команда
+        if lower_text == "вождь, покажи сиськи":
+            await update.message.reply_text("( . Y . )")
+            return
+
+        # Разделяем сообщение на слова и берем первую часть (команду)
+        command = message_text.split()[0].lower()
+
+        # Ищем точное соответствие команде
+        for cmd, handler in self.handlers.items():
+            if command == cmd.lower():
+                try:
+                    await handler.handle(update, context)
+                except Exception as e:
+                    logger.error(f"Ошибка в обработчике {cmd}: {e}")
+                    await update.message.reply_text("⚠️ Ошибка выполнения команды")
+                return
+
+        logger.debug(f"Необработанное сообщение: {message_text}")
+
+    def run(self):
+        logging.basicConfig(
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            level=logging.INFO,
+            handlers=[logging.FileHandler("bot.log"), logging.StreamHandler()],
+        )
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+
+        application = Application.builder().token(self.config.BOT_TOKEN).build()
+        application.add_handler(
+            ExtMessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message)
+        )
+
+        logger.info("Основной бот запущен (без whitelist)")
+        application.run_polling()
+
+
+config.py:
+# config.py
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
+
+class Config:
+    def __init__(self):
+        self.BOT_TOKEN = os.getenv("MAIN_BOT_TOKEN")
+
+        self.WOW_FILES = {
+            "ilvl": Path(
+                "/home/diver/Games/wc/CircleL/WTF/Account/VLADGOBELEN/SavedVariables/NSQC.lua"
+            ),
+            "gp": Path(
+                "/home/diver/Games/wc/CircleL/WTF/Account/VLADGOBELEN/SavedVariables/NSQC.lua"
+            ),
+            "history": Path(
+                "/home/diver/Games/wc/CircleL/WTF/Account/VLADGOBELEN/SavedVariables/NSQS_chat_log.lua"
+            ),
+            "calendar": Path(
+                "/home/diver/Games/wc/CircleL/WTF/Account/VLADGOBELEN/SavedVariables/NSQS.lua"
+            ),
+        }
+
+        self.WOW_COMMANDS = {
+            "focus_window": [
+                "env DISPLAY=:0 lua /home/diver/Скрипты/lo.lua",
+                "env DISPLAY=:0 sh /home/diver/Скрипты/l211.sh",
+                "xte 'key Return'",
+            ],
+            "paste_command": "xte 'keydown Control_L' 'key v' 'keyup Control_L'",
+            "press_enter": "xte 'key Return'",
+        }
+
+handlers/addon_handler.py:
+from handlers.base import BaseHandler
+from telegram import Update
+from telegram.ext import CallbackContext
+
+
+class AddonHandler(BaseHandler):
+    async def handle(self, update: Update, context: CallbackContext):
+        """Обработчик команды -аддон"""
+        message = "🔗 Скачать аддон: https://github.com/Vladgobelen/NSQCuE/releases/download/v1.0.2/NSQCuE.exe"
+        await update.message.reply_text(message)
+
+
+handlers/base.py:
+from telegram import Update
+from telegram.ext import CallbackContext
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class BaseHandler:
+    def __init__(self, file_service=None, wow_service=None):
+        self.file_service = file_service
+        self.wow_service = wow_service
+
+    async def handle(self, update: Update, context: CallbackContext):
+        raise NotImplementedError("Метод handle должен быть реализован в подклассах")
+
+
+handlers/calendar_handler.py:
+# handlers/calendar_handler.py
+from handlers.base import BaseHandler
+from telegram import Update
+from telegram.ext import CallbackContext
+import logging
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+
+class CalendarHandler(BaseHandler):
+    def _find_last_available_date(self, calendar: dict) -> str:
+        """Находит самую свежую дату в календаре"""
+        dates = list(calendar.keys())
+        if not dates:
+            return None
+        return max(dates)
+
+    def _format_events(self, day_dict, target_nick: str = None) -> list:
+        """Форматирует события в читаемый список"""
+        events = []
+        for sender, sender_events in day_dict.items():
+            if target_nick and sender != target_nick:
+                continue
+            for title, event in sender_events.items():
+                time_str = event.get("date", "0000")
+                formatted_time = f"{time_str[:2]}:{time_str[2:]}" if len(time_str) == 4 else time_str
+                desc_raw = event.get("text", "")
+                logger.debug(f"[DEBUG CALENDAR] desc_raw = {repr(desc_raw)}")
+                print(f"[PRINT DEBUG] RAW DESCRIPTION: {repr(desc_raw)}")
+
+                # Заменяем литеральные управляющие последовательности на реальные символы
+                desc = desc_raw.replace('\\n', '\n').replace('\\r', '\r')
+                # Убираем пробельные символы и остаточные обратные слеши в конце
+                desc = desc.rstrip(' \t\r\n\\')
+
+                logger.debug(f"[DEBUG CALENDAR] desc after cleanup = {repr(desc)}")
+                print(f"[PRINT DEBUG] CLEANED DESCRIPTION: {repr(desc)}")
+
+                event_line = f"📌 {title} ({formatted_time})\n👤 {sender}"
+                if desc:
+                    event_line += f"\n📝 {desc}"
+                events.append(event_line)
+        return events
+
+    async def handle(self, update: Update, context: CallbackContext):
+        try:
+            message_text = update.message.text.strip()
+            if not message_text.lower().startswith("-рт"):
+                return
+
+            args = message_text[4:].strip().split()  # убираем "-рт"
+
+            full_data = self.file_service.load_lua_file("calendar")
+            if not full_data or "calendar" not in full_data:
+                await update.message.reply_text("📅 Календарь пуст или не загружен")
+                return
+
+            calendar = full_data["calendar"]
+            now = datetime.now()
+            target_date = None
+            target_nick = None
+            mode = "today"
+
+            if not args:
+                target_date = now.strftime("%Y-%m-%d")
+                mode = "today"
+            else:
+                arg = args[0]
+                if arg.isdigit() and 1 <= int(arg) <= 31:
+                    day = int(arg)
+                    try:
+                        target_date = now.replace(day=day).strftime("%Y-%m-%d")
+                    except ValueError:
+                        await update.message.reply_text("❌ Некорректная дата")
+                        return
+                    mode = "date"
+                elif '.' in arg:
+                    parts = arg.split('.', 1)
+                    if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+                        day, month = int(parts[0]), int(parts[1])
+                        try:
+                            target_date = now.replace(day=day, month=month).strftime("%Y-%m-%d")
+                        except ValueError:
+                            await update.message.reply_text("❌ Некорректная дата (DD.MM)")
+                            return
+                    else:
+                        await update.message.reply_text("❌ Формат даты: DD или DD.MM")
+                        return
+                    mode = "date"
+                else:
+                    target_nick = arg
+                    target_date = now.strftime("%Y-%m-%d")
+                    mode = "nick"
+
+            events = []
+            fallback_used = False
+
+            if target_date in calendar:
+                events = self._format_events(calendar[target_date], target_nick)
+            else:
+                if mode in ("today", "nick"):
+                    last_date = self._find_last_available_date(calendar)
+                    if last_date and last_date in calendar:
+                        events = self._format_events(calendar[last_date], target_nick)
+                        target_date = last_date
+                        fallback_used = True
+
+            if not events:
+                if mode == "date":
+                    date_display = datetime.fromisoformat(target_date).strftime("%d.%m.%Y")
+                    await update.message.reply_text(f"📅 Нет событий на {date_display}")
+                else:
+                    msg = "📅 Сегодня нет событий"
+                    if fallback_used:
+                        date_display = datetime.fromisoformat(target_date).strftime("%d.%m.%Y")
+                        msg += f", но есть на {date_display}"
+                    await update.message.reply_text(msg)
+            else:
+                date_display = datetime.fromisoformat(target_date).strftime("%d.%m.%Y")
+                if fallback_used and mode == "today":
+                    header = f"📅 Сегодня нет событий. Последние события на {date_display}:"
+                elif fallback_used and mode == "nick":
+                    header = f"📅 Сегодня нет событий от **{target_nick}**. Последние на {date_display}:"
+                else:
+                    header = f"📅 События на {date_display}"
+                    if target_nick:
+                        header += f" (от {target_nick})"
+
+                full_output = header + "\n\n" + "\n\n".join(events)
+                logger.debug(f"[DEBUG CALENDAR] Final output:\n{repr(full_output)}")
+                await update.message.reply_text(full_output)
+
+        except Exception as e:
+            logger.error(f"Ошибка в CalendarHandler: {e}", exc_info=True)
+            await update.message.reply_text("⚠️ Ошибка при обработке календаря")
+
+
+handlers/config.py:
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+class Config:
+    def __init__(self):
+        self.BOT_TOKEN = os.getenv("MAIN_BOT_TOKEN")
+        self.WHITELIST_FILE = Path(
+            "whitelist_sync.txt"
+        )  # Локальная копия белого списка
+
+        self.WOW_FILES = {
+            "ilvl": Path(
+                "/home/diver/Games/wc/CircleL/WTF/Account/VLADGOBELEN/SavedVariables/NSQC.lua"
+            ),
+            "gp": Path(
+                "/home/diver/Games/wc/CircleL/WTF/Account/VLADGOBELEN/SavedVariables/NSQC.lua"
+            ),
+            "history": Path(
+                "/home/diver/Games/wc/CircleL/WTF/Account/VLADGOBELEN/SavedVariables/NSQS_chat_log.lua"
+            ),
+        }
+
+        self.WOW_COMMANDS = {
+            "focus_window": [
+                "env DISPLAY=:0 lua /home/diver/Скрипты/lo.lua",
+                "env DISPLAY=:0 sh /home/diver/Скрипты/l211.sh",
+                "xte 'key Return'",
+            ],
+            "paste_command": "xte 'keydown Control_L' 'key v' 'keyup Control_L'",
+            "press_enter": "xte 'key Return'",
+        }
+
+        self.COMMAND_PREFIXES = {
+            "илвл": "ilvl",
+            "!гп": "gp",
+            "!сообщение:": "message",
+            "!релоэд": "reload",
+            "!гпрл": "gprl",
+        }
+
+
+handlers/custom_message_handler.py:
+from handlers.base import BaseHandler
+from telegram import Update
+from telegram.ext import CallbackContext
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class CustomMessageHandler(BaseHandler):
+    async def handle(self, update: Update, context: CallbackContext):
+        try:
+            parts = update.message.text.split(maxsplit=1)
+            if len(parts) < 2:
+                await update.message.reply_text("Использование: !сообщение: ваш текст")
+                return
+
+            message = parts[1]
+            if self.wow_service.send_to_wow(f"/g ТГ: {message}"):
+                await update.message.reply_text("✉️ Сообщение отправлено")
+            else:
+                await update.message.reply_text("⚠️ Ошибка отправки")
+        except Exception as e:
+            logger.error(f"Ошибка: {e}")
+            await update.message.reply_text("⚠️ Ошибка выполнения")
+
+
+handlers/gp_handler.py:
+from handlers.base import BaseHandler
+from telegram import Update
+from telegram.ext import CallbackContext
+import logging
+
+logger = logging.getLogger(__name__)
+
+MAX_MESSAGE_LENGTH = 4000  # Лимит Telegram на длину сообщения
+
+
+class GpHandler(BaseHandler):
+    async def _send_chunks(self, update: Update, text: str, prefix: str = ""):
+        """Разбивает длинный текст на части и отправляет"""
+        while text:
+            chunk = text[:MAX_MESSAGE_LENGTH]
+            text = text[MAX_MESSAGE_LENGTH:]
+
+            # Ищем последний перенос строки для корректного разбиения
+            last_newline = chunk.rfind("\n")
+            if last_newline != -1 and len(text) > 0:
+                chunk = chunk[:last_newline]
+                text = chunk[last_newline + 1:] + text
+
+            await update.message.reply_text(prefix + chunk)
+            prefix = ""  # Префикс только для первого сообщения
+
+    async def handle(self, update: Update, context: CallbackContext):
+        """Обработчик КОМАНДЫ !гп (вывод статистики GP)"""
+        try:
+            # Точная проверка команды (регистронезависимо)
+            message_text = update.message.text.strip().lower()
+            if not message_text.startswith("!гп"):
+                return
+
+            # Получаем аргументы после команды
+            args = message_text.split()[1:]
+
+            # Загрузка данных GP
+            data = self.file_service.load_gp_data()
+            if not data:
+                await update.message.reply_text("Данные GP не найдены")
+                return
+
+            # Сортируем данные по значению GP
+            gp_data = dict(sorted(data.items(), key=lambda item: item[1]))
+            result = []
+
+            # Обработка разных вариантов запроса:
+            if len(args) == 0:  # Вывод всей статистики
+                for name, value in gp_data.items():
+                    result.append(f"{name}: {int(value)}")
+
+            elif len(args) == 1:
+                name_query = args[0]
+                # Ищем совпадение без учёта регистра
+                found = None
+                for name, value in gp_data.items():
+                    if name.lower() == name_query:
+                        found = (name, value)
+                        break
+
+                if found:
+                    result.append(f"{found[0]}: {int(found[1])}")
+                else:
+                    await update.message.reply_text("Игрок не найден")
+                    return
+
+            elif len(args) == 2:  # Фильтр по диапазону значений
+                try:
+                    min_val, max_val = int(args[0]), int(args[1])
+                    for name, value in gp_data.items():
+                        if min_val <= int(value) <= max_val:
+                            result.append(f"{name}: {int(value)}")
+                except ValueError:
+                    await update.message.reply_text("Неверный формат чисел")
+                    return
+
+            else:
+                await update.message.reply_text(
+                    "Использование:\n"
+                    "!гп - полная статистика\n"
+                    "!гп [имя] - поиск по игроку\n"
+                    "!гп [мин] [макс] - фильтр по диапазону"
+                )
+                return
+
+            # Отправка результата
+            if not result:
+                await update.message.reply_text("Нет данных по вашему запросу")
+            else:
+                full_text = "📊 GP статистика:\n" + "\n".join(result)
+                await self._send_chunks(update, full_text)
+
+        except Exception as e:
+            logger.error(f"Ошибка в GpHandler: {e}", exc_info=True)
+            await update.message.reply_text("⚠️ Ошибка обработки запроса GP")
+
+
+handlers/gprl_handler.py:
+from telegram import Update
+from telegram.ext import CallbackContext
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class GprlHandler:
+    def __init__(self, wow_service):
+        self.wow_service = wow_service
+
+    async def handle(self, update: Update, context: CallbackContext):
+        """Обработчик ТОЛЬКО команды '!гпрл'"""
+        try:
+            # Точное сравнение команды (регистронезависимо)
+            if update.message.text.strip().lower() != "!гпрл":
+                return
+
+            await update.message.reply_text("⚡ Выполняю gpEnTg() в игре...")
+            if self.wow_service.execute_gp_command():
+                await update.message.reply_text("✅ Команда выполнена")
+            else:
+                await update.message.reply_text("⚠️ Ошибка выполнения")
+
+        except Exception as e:
+            logger.error(f"GPRL Error: {e}")
+            await update.message.reply_text("⚠️ Ошибка выполнения команды")
+
+
+handlers/history_handler.py:
+# handlers/history_handler.py
+from handlers.base import BaseHandler
+from telegram import Update
+from telegram.ext import CallbackContext
+import re
+import logging
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+MAX_LINES = 10  # Максимум строк при выводе сообщений
+TOTAL_BASE = 10000  # База для расчёта процента
+TOP_COUNT = 10  # Сколько игроков в топе
+
+
+class HistoryHandler(BaseHandler):
+    async def handle(self, update: Update, context: CallbackContext):
+        try:
+            message_text = update.message.text.strip()
+
+            # Проверяем, что команда начинается с `-история`
+            if not message_text.lower().startswith("-история"):
+                return
+
+            # Извлекаем аргументы
+            args = message_text[9:].strip().split()
+            if not args:
+                args = []
+
+            # Загружаем историю
+            raw_lines = self.file_service.load_chat_history()
+            if not raw_lines:
+                await update.message.reply_text("История чата пуста или не загружена")
+                return
+
+            # Парсим каждую строку: ищем timestamp в конце
+            parsed = []
+            for line in raw_lines:
+                line = line.strip()
+                if not line:
+                    continue
+
+                # Ищем timestamp из 10+ цифр в конце строки
+                timestamp_match = re.search(r'(\d{10,})$', line)
+                if timestamp_match:
+                    timestamp = int(timestamp_match.group(1))
+                    text_part = line[:timestamp_match.start()].strip()
+                    time_str = datetime.fromtimestamp(timestamp).strftime("%H:%M:%S")
+                else:
+                    # Нет timestamp — пропускаем или помечаем как неизвестное
+                    timestamp = 0
+                    text_part = line
+                    time_str = "??:??:??"
+
+                # Извлекаем ник: первое слово до пробела
+                if text_part:
+                    first_space = text_part.find(' ')
+                    if first_space > 0:
+                        nick = text_part[:first_space]
+                        message = text_part[first_space + 1:].strip()
+                    else:
+                        nick = text_part  # только ник, без сообщения
+                        message = ""
+                else:
+                    nick = "Unknown"
+                    message = ""
+
+                parsed.append({
+                    "nick": nick,
+                    "message": message,
+                    "timestamp": timestamp,
+                    "time_str": time_str
+                })
+
+            total_messages = len(parsed)
+
+            # === КОМАНДА: топ ===
+            if len(args) == 1 and args[0].lower() == "топ":
+                # Считаем количество сообщений по никам
+                stats = {}
+                for p in parsed:
+                    nick = p["nick"]
+                    if nick != "Unknown":
+                        stats[nick] = stats.get(nick, 0) + 1
+
+                # Сортируем по убыванию
+                sorted_stats = sorted(stats.items(), key=lambda x: x[1], reverse=True)
+
+                # Формируем топ-10
+                lines = ["🏆 ТОП-10 по активности в чате:"]
+                for i, (nick, count) in enumerate(sorted_stats[:TOP_COUNT], 1):
+                    percent = (count / total_messages) * 100 if total_messages > 0 else 0
+                    lines.append(f"{i}. {nick} — {count} сообщений ({percent:.2f}%)")
+
+                if not sorted_stats:
+                    lines.append("Пока нет данных")
+
+                await update.message.reply_text("\n".join(lines))
+                return
+
+            # === КОМАНДА: [Ник] всего ===
+            if len(args) >= 2 and args[1].lower() == "всего":
+                target_nick = args[0]
+                count = sum(1 for p in parsed if p["nick"] == target_nick)
+
+                if count == 0:
+                    await update.message.reply_text(f"🔸 Ник \"{target_nick}\" не найден в истории")
+                    return
+
+                percent = (count / total_messages) * 100 if total_messages > 0 else 0
+                await update.message.reply_text(
+                    f"📊 Ник \"{target_nick}\" написал {count} сообщений "
+                    f"({percent:.2f}% от {total_messages})"
+                )
+                return
+
+            # === ОСНОВНАЯ ЛОГИКА: диапазон, фильтр по нику и т.д. ===
+
+            # Определяем: ник, диапазон
+            target_nick = None
+            start_idx = None
+            end_idx = None
+
+            # Проверяем первый аргумент: если не число — это ник
+            if args:
+                if not args[0].isdigit():
+                    target_nick = args[0]
+                    args = args[1:]
+
+            # Диапазон
+            if len(args) >= 2:
+                try:
+                    start_idx = int(args[0]) - 1
+                    end_idx = int(args[1])
+                    if start_idx < 0:
+                        start_idx = 0
+                except ValueError:
+                    await update.message.reply_text("❌ Диапазон должен быть числом")
+                    return
+            elif len(args) == 1 and args[0].isdigit():
+                try:
+                    end_idx = int(args[0])
+                    start_idx = 0
+                except ValueError:
+                    pass
+
+            # Фильтр по нику
+            if target_nick:
+                filtered = [p for p in parsed if p["nick"] == target_nick]
+                total_count = len(filtered)
+                if total_count == 0:
+                    await update.message.reply_text(f"🔸 Ник '{target_nick}' не найден в истории")
+                    return
+            else:
+                filtered = parsed
+                total_count = len(filtered)
+
+            # Выбор диапазона
+            if start_idx is None and end_idx is None:
+                selected = filtered[-10:]
+            elif start_idx is not None and end_idx is not None:
+                selected = filtered[start_idx:end_idx]
+            elif end_idx is not None:
+                selected = filtered[:end_idx]
+            else:
+                selected = filtered[-10:]  # fallback
+
+            # Ограничение
+            if len(selected) > MAX_LINES:
+                await update.message.reply_text(f"⚠️ Слишком много строк ({len(selected)}). Максимум: {MAX_LINES}")
+                selected = selected[:MAX_LINES]
+
+            if not selected:
+                await update.message.reply_text("🔸 Нет сообщений по заданному фильтру")
+                return
+
+            # Формируем ответ
+            result_lines = []
+            for item in selected:
+                result_lines.append(f"[{item['time_str']}] {item['nick']}: {item['message']}")
+
+            header = "📜 История чата:"
+            if target_nick:
+                header += f" @{target_nick}"
+            if start_idx is not None or end_idx is not None:
+                range_str = f"{start_idx + 1}–{end_idx if end_idx else len(filtered)}"
+                header += f" [{range_str}]"
+
+            await update.message.reply_text(header + "\n" + "\n".join(result_lines))
+
+        except Exception as e:
+            logger.error(f"Ошибка в HistoryHandler: {e}", exc_info=True)
+            await update.message.reply_text("⚠️ Ошибка при обработке истории")
+
+
+handlers/ilvl_handler.py:
+from handlers.base import BaseHandler
+from telegram import Update
+from telegram.ext import CallbackContext
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class IlvlHandler(BaseHandler):
+    async def handle(self, update: Update, context: CallbackContext):
+        try:
+            data = self.file_service.load_lua_file("ilvl")
+            if not data or "Шеф" not in data or "илвл" not in data["Шеф"]:
+                await update.message.reply_text("Данные не найдены")
+                return
+
+            await update.message.reply_text(
+                f"🔹 Уровень предметов: {data['Шеф']['илвл']}"
+            )
+        except Exception as e:
+            logger.error(f"Error in IlvlHandler: {e}", exc_info=True)
+            await update.message.reply_text("⚠️ Ошибка обработки запроса")
+
+
+handlers/__init__.py:
+# handlers/__init__.py
+from .base import BaseHandler
+from .gp_handler import GpHandler
+from .ilvl_handler import IlvlHandler
+from .custom_message_handler import CustomMessageHandler
+from .reload_handler import ReloadHandler
+from .gprl_handler import GprlHandler
+from .server_check_handler import ServerCheckHandler
+from .history_handler import HistoryHandler
+from .addon_handler import AddonHandler
+from .calendar_handler import CalendarHandler
+from .online_handler import OnlineHandler  # <-- добавлено
+
+__all__ = [
+    "BaseHandler",
+    "GpHandler",
+    "IlvlHandler",
+    "CustomMessageHandler",
+    "ReloadHandler",
+    "GprlHandler",
+    "ServerCheckHandler",
+    "HistoryHandler",
+    "AddonHandler",
+    "CalendarHandler",
+    "OnlineHandler",  # <-- добавлено
+]
+
+
+handlers/online_handler.py:
+# handlers/online_handler.py
+from handlers.base import BaseHandler
+from telegram import Update
+from telegram.ext import CallbackContext
+import logging
+import requests
+from bs4 import BeautifulSoup
+
+logger = logging.getLogger(__name__)
+
+class OnlineHandler(BaseHandler):
+    async def handle(self, update: Update, context: CallbackContext):
+        """Команда -онлайн: сначала отвечает, потом удаляет команду"""
+        try:
+            url = "https://wowcircle.net/stat.html"
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "html.parser")
+
+            output_lines = ["🎮 **Онлайн серверов WoW Circle**\n"]
+
+            server_blocks = soup.find_all("div", class_="server-block")
+            for block in server_blocks:
+                title_elem = block.find("div", class_="title")
+                if not title_elem:
+                    continue
+
+                title_raw = title_elem.get_text(strip=True).replace("Статус миров", "").strip()
+                if "Межсерверной арены" in title_raw:
+                    output_lines.append("🔹 **Межсерверные зоны**")
+                else:
+                    output_lines.append(f"🔹 **{title_raw}**")
+
+                server_items = block.find_all("div", class_="server-item")
+                for item in server_items:
+                    name_elem = item.find("div", class_="name")
+                    online_elem = item.find("div", class_="online")
+                    status_div = item.find("div", class_=["on", "off"])
+
+                    if not name_elem or not online_elem:
+                        continue
+
+                    name = name_elem.get_text(strip=True)
+                    online_raw = online_elem.get_text(strip=True)
+                    online = online_raw.replace("Онлайн:", "").strip()
+                    status = "🟢" if status_div and "on" in status_div.get("class", []) else "🔴"
+
+                    output_lines.append(f"{status} {name}: {online} игроков")
+
+                output_lines.append("")  # пустая строка между блоками
+
+            full_message = "\n".join(output_lines).rstrip()
+
+            if len(full_message) > 4096:
+                full_message = full_message[:4093] + "..."
+
+            # 1. Сначала отправляем ответ
+            sent_message = await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=full_message,
+                parse_mode="Markdown"
+            )
+
+            # 2. Потом удаляем команду (если есть разрешение)
+            if update.message:
+                try:
+                    await update.message.delete()
+                except Exception as e:
+                    # Игнорируем ошибки удаления (например, в приватных чатах без прав)
+                    logger.debug(f"Не удалось удалить команду: {e}")
+
+        except Exception as e:
+            logger.error(f"Ошибка в OnlineHandler: {e}", exc_info=True)
+            fallback_msg = await update.message.reply_text("⚠️ Не удалось загрузить или распарсить данные онлайн")
+            try:
+                await update.message.delete()
+            except:
+                pass
+
+handlers/reload_handler.py:
+# handlers/reload_handler.py
+from handlers.base import BaseHandler
+from telegram import Update
+from telegram.ext import CallbackContext
+import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class ReloadHandler(BaseHandler):
+    async def handle(self, update: Update, context: CallbackContext):
+        """Обработчик команды '-релоэд'"""
+        try:
+            # Проверяем точное соответствие команде (без учёта регистра)
+            if update.message.text.strip().lower() != "-релоэд":
+                return
+
+            msg = await update.message.reply_text("🔄 Выполняю перезагрузку аддонов...")
+
+            # Выполняем команду перезагрузки в WoW
+            success = self.wow_service.reload_addons()
+
+            # Ждём 50 секунд
+            await asyncio.sleep(50)
+
+            if success:
+                await msg.edit_text("✅ Аддоны перезагружены")
+            else:
+                await msg.edit_text("⚠️ Не удалось выполнить перезагрузку")
+
+        except Exception as e:
+            logger.error(f"Ошибка в ReloadHandler: {e}", exc_info=True)
+            await update.message.reply_text("⚠️ Критическая ошибка при перезагрузке")
+
+
+handlers/server_check_handler.py:
+from handlers.base import BaseHandler
+from telegram import Update
+from telegram.ext import CallbackContext
+import subprocess
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class ServerCheckHandler(BaseHandler):
+    async def handle(self, update: Update, context: CallbackContext):
+        """Обработчик команды '!сервер'"""
+        try:
+            msg = await update.message.reply_text("🔄 Проверяю состояние сервера...")
+
+            # Проверка наличия соединений
+            result_count = subprocess.run(
+                'netstat | grep "11294" | wc -l',
+                shell=True,
+                capture_output=True,
+                text=True,
+            )
+            connection_count = int(result_count.stdout.strip() or 0)
+
+            if connection_count < 1:
+                await msg.edit_text("🔴 Сервер ОФФЛАЙН")
+                return
+
+            # Проверка проблем при наличии соединений
+            result_conn = subprocess.run(
+                "netstat | grep ':11294 ' | awk '{print $3}'",
+                shell=True,
+                capture_output=True,
+                text=True,
+            )
+            connections = [int(x) for x in result_conn.stdout.split() if x.isdigit()]
+
+            result_packets = subprocess.run(
+                "netstat | grep ':11294 ' | awk '{print $2}'",
+                shell=True,
+                capture_output=True,
+                text=True,
+            )
+            packets = [int(x) for x in result_packets.stdout.split() if x.isdigit()]
+
+            problems = []
+            if any(c > 500 for c in connections):
+                problems.append("соединения")
+            if any(p > 50000 for p in packets):
+                problems.append("пакеты")
+
+            if problems:
+                await msg.edit_text(f"🟡 Сервер БОЛЕЕТ ({', '.join(problems)})")
+            else:
+                await msg.edit_text("🟢 Сервер ОНЛАЙН")
+
+        except Exception as e:
+            logger.error(f"Ошибка проверки сервера: {e}", exc_info=True)
+            await update.message.reply_text("⚠️ Ошибка при проверке сервера")
+
+
+__init__.py:
+
+
+main.py:
+from bot import WowBot
+
+if __name__ == "__main__":
+    bot = WowBot()
+    bot.run()
+
+
+services/file_service.py:
+# services/file_service.py
+import re
+import logging
+from pathlib import Path
+from typing import Optional, Dict, Any
+from slpp import slpp as lua
+
+logger = logging.getLogger(__name__)
+
+
+class FileService:
+    def __init__(self, file_paths: Dict[str, Path]):
+        self.file_paths = file_paths
+
+    def find_table(self, data: str, name: str) -> Optional[str]:
+        res = re.search(r"\s%s = (.*?)\n}" % name, data, re.DOTALL)
+        return res.group(1) + "\n}" if res else None
+
+    def load_lua_file(self, file_type: str) -> Optional[Dict[str, Any]]:
+        file_path = self.file_paths.get(file_type)
+        if not file_path or not file_path.exists():
+            logger.error(f"File not found: {file_path}")
+            return None
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = f.read()
+
+            table_data = self.find_table(data, "nsDb") or self.find_table(data, "testQ")
+            if not table_data:
+                logger.error(f"Таблица nsDb/testQ не найдена в файле {file_path}")
+                return None
+
+            return lua.decode(table_data)
+        except Exception as e:
+            logger.error(f"Error loading Lua file: {e}", exc_info=True)
+            return None
+
+    def load_gp_data(self) -> Optional[dict]:
+        try:
+            data = self.load_lua_file("gp")
+            if not data:
+                return None
+
+            if "testQ" in data and "gpEnTg" in data["testQ"]:
+                return data["testQ"]["gpEnTg"]
+            elif "gpEnTg" in data:
+                return data["gpEnTg"]
+            elif "gpDB" in data:
+                return data["gpDB"]
+            elif "nsDb" in data and "gpEnTg" in data["nsDb"]:
+                return data["nsDb"]["gpEnTg"]
+
+            logger.error(f"GP данные не найдены в структуре: {list(data.keys())}")
+            return None
+        except Exception as e:
+            logger.error(f"Ошибка загрузки GP данных: {e}", exc_info=True)
+            return None
+
+    def load_whitelist(self, whitelist_path: Path) -> set[int]:
+        whitelist = set()
+        try:
+            if whitelist_path.exists():
+                with open(whitelist_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if line.strip() and line.split()[0].isdigit():
+                            whitelist.add(int(line.split()[0]))
+            else:
+                logger.warning(f"Файл белого списка не найден: {whitelist_path}")
+        except Exception as e:
+            logger.error(f"Ошибка загрузки whitelist: {e}", exc_info=True)
+        return whitelist
+
+    def load_chat_history(self) -> Optional[list]:
+        file_path = self.file_paths.get("history")
+        if not file_path or not file_path.exists():
+            logger.error(f"❌ Файл истории не найден: {file_path}")
+            return None
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+            logger.info(f"🔍 Начинаем парсинг истории чата из {file_path}")
+
+            # Шаг 1: Найти начало блока ["лог_чат"] = {
+            in_chat_log = False
+            messages = []
+
+            for line in lines:
+                stripped = line.strip()
+
+                # Обнаружили начало блока
+                if '["лог_чат"] = {' in stripped:
+                    in_chat_log = True
+                    continue
+
+                # Вышли из блока
+                if in_chat_log and stripped == "},":
+                    break
+
+                # Собираем сообщения только внутри блока
+                if in_chat_log:
+                    # Ищем строку вида: "текст", -- [N]
+                    if stripped.startswith('"') and '",' in stripped:
+                        # Находим позицию закрывающей кавычки
+                        end_quote = stripped.find('"', 1)
+                        if end_quote != -1:
+                            message = stripped[1:end_quote]
+                            messages.append(message)
+
+            logger.info(f"✅ Успешно загружено {len(messages)} строк из истории чата")
+            return messages
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка при загрузке истории чата: {e}", exc_info=True)
+            return None
+
+
+services/__init__.py:
+
+
+services/wow_service.py:
+import subprocess
+import shlex
+import pyperclip
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class WowService:
+    def __init__(self, wow_commands: dict):
+        self.commands = wow_commands
+
+    def _run_cmd(self, command: str) -> bool:
+        try:
+            subprocess.run(shlex.split(command), check=True, timeout=3)
+            return True
+        except Exception as e:
+            logger.error(f"Command failed: {command} - {e}")
+            return False
+
+    def execute_gp_command(self) -> bool:
+        """ТОЛЬКО выполняет gpEnTg() в игре"""
+        try:
+            # 1. Активация окна WoW
+            for cmd in self.commands["focus_window"]:
+                if not self._run_cmd(cmd):
+                    return False
+
+            # 2. Отправка конкретной команды
+            pyperclip.copy("/run gpEnTg()")
+            return self._run_cmd(self.commands["paste_command"]) and self._run_cmd(
+                self.commands["press_enter"]
+            )
+        except Exception as e:
+            logger.error(f"GP command error: {e}")
+            return False
+
+    def send_to_wow(self, message: str) -> bool:
+        try:
+            pyperclip.copy(message)
+            for cmd in self.commands["focus_window"]:
+                if not self._run_cmd(cmd):
+                    return False
+            return self._run_cmd(self.commands["paste_command"]) and self._run_cmd(
+                self.commands["press_enter"]
+            )
+        except Exception as e:
+            logger.error(f"Send to WoW error: {e}")
+            return False
+
+    def reload_addons(self) -> bool:
+        """Выполняет команду /reload в игре"""
+        try:
+            # 1. Активация окна WoW
+            for cmd in self.commands["focus_window"]:
+                if not self._run_cmd(cmd):
+                    return False
+
+            # 2. Отправка команды /reload
+            pyperclip.copy("/reload")
+            return self._run_cmd(self.commands["paste_command"]) and self._run_cmd(
+                self.commands["press_enter"]
+            )
+        except Exception as e:
+            logger.error(f"Reload error: {e}")
+            return False
+
+
+utils/decorators.py:
+
+
+utils/__init__.py:
+
+
+utils/validators.py:
+
+
